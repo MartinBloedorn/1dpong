@@ -4,8 +4,11 @@
     - [ ] Server can optionally automatically shut down after 5min to save resources.
     - [ ] Change this device's name (currently  esp32s3-94E1CC)
 - [ ] Saving parameters with EEPROM: https://www.luisllamas.es/en/esp32-eeprom/
-
+- [ ] Animations:
+    - Point
+    - Waiting to start
 
 ## Ideas
 
-- Prevent paddle from being spammed: add some sort of minimum dead-time between presses/hits (e.g. 250ms or so)
+- [x] Prevent paddle from being spammed: add some sort of minimum dead-time between presses/hits (e.g. 250ms or so)
+- [ ] Faint "paddle preview" at the edges?

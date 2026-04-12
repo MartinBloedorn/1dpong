@@ -11,19 +11,26 @@ struct GameParameters
         CRGB color  = CRGB::Green;
         int width   = 3;
 
-        float speedMin = 0.5f;
-        float speedMax = 10.0f;
+        float motionBlurWidth = 5.0f;       // As a multiplier of width
+        float motionBlurStrength = 0.33f;
+
+        float speedInit = 0.75f;
+        float speedMin  = 0.5f;
+        float speedMax  = 2.25f;
     } ball;
 
     struct {
-        float power = 4.0f;
-        int range   = 5;
+        float power = 2.75f;
+        int range   = 10;
 
-        uint32_t deadtimeUs = 250*1000;
+        CRGB color[2]  = {CRGB::Red, CRGB::Yellow};
+
+        uint32_t animationDecayUs = 450*1000;
+        uint32_t deadtimeUs       = 250*1000;
     } paddle;
 
     struct {
-        
+        uint32_t scoreAnimationDurationUs = 1000*1000;
     } gameplay;
 };
 
@@ -42,7 +49,7 @@ public:
     void debug(int intervalUs);
 
     void update();
-    void setPaddleHit(Paddles paddle, uint32_t timeUs = 0);
+    void setPaddleHit(Paddles paddle);
 
     GameParameters gameParameters() const;
     void setGameParameters(const GameParameters& params);
@@ -65,16 +72,20 @@ private:
     void drawPlaying();
 
     void updatePointScoredBy(Paddles at);
+    void drawPointScoredBy(Paddles at);
 
     CRGB sampleBallAt(float x) const;
     CRGB samplePaddleAt(Paddles paddle, float x) const;
 
     void transitionIntoState(GameState state);
 
+    inline float normalizeToLength(float v) const { 
+        return v/((float)mMaxNumLeds);
+    }
+
     void draw(std::function<CRGB(int, float)>&& f) {
         for(int i = 0; i < mMaxNumLeds; ++i) {
-            float x = ((float)i)/((float)(mMaxNumLeds - 1));
-            mLeds[i] = f(i, x);
+            mLeds[i] = f(i, normalizeToLength(i + 1));
         }
     }
 
@@ -83,14 +94,13 @@ private:
         uint32_t transitionUs = 0;
     } mGameState;
 
+    uint32_t mCurrentUpdateTimeUs = 0;
     uint32_t mLastUpdateTimeUs = 0;
 
     struct {
         float position = 0.0f; // Ball position (0.0 to 1.0)
         float velocity = 0.0f; // Ball velocity (units per update)
-    
-        float width = 0.01f; // Ball width (0.0 to 1.0)
-        CRGB color  = CRGB::Green; // Ball color
+
     } mBallState;
 
     CRGB* mLeds = nullptr;
@@ -102,4 +112,6 @@ private:
     };
 
     PaddleHit mPaddleHit[2];
+
+    GameParameters mGameParameters;
 };

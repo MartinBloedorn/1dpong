@@ -15,7 +15,7 @@ const char *WIFI_PASSWORD = "25183127771347211799";
 #define NUM_LEDS 1
 
 #define LED_STRIP_PIN 1
-#define NUM_STRIP_LEDS 30
+#define NUM_STRIP_LEDS 100
 
 // Button configuration
 #define BUTTON_PIN 6
@@ -26,6 +26,13 @@ CRGB ledStrip[NUM_STRIP_LEDS];
 PongEngine pongEngine(ledStrip, NUM_STRIP_LEDS);
 OneButton button(BUTTON_PIN, true);    // Active low with pull-up
 ConfigWebServer *webServer = nullptr;
+
+// Interrupt handler for button press
+void IRAM_ATTR onButtonFallingEdge()
+{
+    pongEngine.setPaddleHit(PongEngine::Paddles::A);
+    pongEngine.setPaddleHit(PongEngine::Paddles::B);
+}
 
 // Callback for when configuration is saved
 void onConfigSaved(const ConfigParameters &params)
@@ -40,13 +47,22 @@ void onConfigSaved(const ConfigParameters &params)
     Serial.println("============================\n");
 }
 
+static bool buttonFell = false;
+
 // Callback for button press
 void onButtonPressed()
 {
     // Serial.println("Button pressed!");
-    pongEngine.setPaddleHit(PongEngine::Paddles::A);
-    pongEngine.setPaddleHit(PongEngine::Paddles::B);
+    // pongEngine.setPaddleHit(PongEngine::Paddles::A);
+    // pongEngine.setPaddleHit(PongEngine::Paddles::B);
+    buttonFell = true;
     // Add your button press logic here
+}
+
+// Fast GPIO read directly from register
+bool fastDigitalRead(uint8_t pin)
+{
+    return (GPIO.in >> pin) & 1;
 }
 
 // Test pattern: color chase through the strip
@@ -78,13 +94,16 @@ void setup()
     {
     };
 
+    // Attach interrupt to button pin (falling edge, active-low)
+    attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), onButtonFallingEdge, FALLING);
+
     // Initialize button
-    button.attachPress(onButtonPressed);
-    button.setClickMs(0);  // Debounce time in ms
+    // button.attachPress(onButtonPressed);
+    // button.setClickMs(0);  // Debounce time in ms
 
     // Initialize FastLED
     FastLED.addLeds<WS2812, LED_PIN, RGB>(leds, NUM_LEDS);
-    FastLED.addLeds<WS2812, LED_STRIP_PIN, RGB>(ledStrip, NUM_STRIP_LEDS);
+    FastLED.addLeds<WS2812, LED_STRIP_PIN, GRB>(ledStrip, NUM_STRIP_LEDS);
     FastLED.setBrightness(100);
 
     pongEngine.init();
@@ -105,7 +124,13 @@ void loop()
     static bool ledState = false;
 
     // Handle button input with debouncing
-    button.tick();
+    // button.tick();
+
+    if(buttonFell && !fastDigitalRead(BUTTON_PIN)) {
+        buttonFell = false;
+        pongEngine.setPaddleHit(PongEngine::Paddles::A);
+        pongEngine.setPaddleHit(PongEngine::Paddles::B);
+    }
 
     pongEngine.update();
     // pongEngine.debug(2000*1000);
