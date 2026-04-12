@@ -11,6 +11,7 @@ struct ConfigParameters
 {
     std::string ipAddress;
     int port;
+    float sliderValue;
 };
 
 class ConfigWebServer

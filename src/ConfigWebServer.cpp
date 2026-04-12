@@ -9,7 +9,7 @@ ConfigWebServer::ConfigWebServer(const char *ssid, const char *password, int web
     : _ssid(ssid), _password(password), _webServerPort(webServerPort), _configCallback(nullptr),
       _webServer(new AsyncWebServer(webServerPort))
 {
-    _currentConfig = {"192.168.1.1", 8080};
+    _currentConfig = {"192.168.1.1", 8080, 3.25f};
 }
 
 ConfigWebServer::~ConfigWebServer()
@@ -89,6 +89,17 @@ void ConfigWebServer::_setupWebServer()
                 Serial.println("Error parsing port number");
             }
         }
+        if (request->hasParam("sliderValue", true))
+        {
+            try
+            {
+                _currentConfig.sliderValue = std::stof(request->getParam("sliderValue", true)->value().c_str());
+            }
+            catch (...)
+            {
+                Serial.println("Error parsing slider value");
+            }
+        }
 
         // Call the user-provided callback
         if (_configCallback)
@@ -141,12 +152,23 @@ std::string ConfigWebServer::_generateHTML() const
         <input type="number" id="port" name="port" value=")"
          << _currentConfig.port << R"(" min="1" max="65535" required>
       </div>
+      <div class="form-group">
+        <label for="sliderValue">Slider Value: <span id="sliderDisplay">)"
+         << _currentConfig.sliderValue << R"(</span></label>
+        <input type="range" id="sliderValue" name="sliderValue" value=")"
+         << _currentConfig.sliderValue << R"(" min="1.5" max="5.0" step="0.1">
+      </div>
       <button type="submit">Save Configuration</button>
     </form>
     <div id="status" class="status"></div>
   </div>
   
   <script>
+    // Update slider display value in real-time
+    document.getElementById('sliderValue').addEventListener('input', function(e) {
+      document.getElementById('sliderDisplay').textContent = e.target.value;
+    });
+
     document.getElementById('configForm').addEventListener('submit', function(e) {
       e.preventDefault();
       const formData = new FormData(this);
