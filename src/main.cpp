@@ -14,11 +14,14 @@ const char *WIFI_PASSWORD = "25183127771347211799";
 #define LED_PIN 21
 #define NUM_LEDS 1
 
-#define LED_STRIP_PIN 1
-#define NUM_STRIP_LEDS 100
+#define LED_STRIP_PIN 6
+#define NUM_STRIP_LEDS 190
 
 // Button configuration
 #define BUTTON_PIN 6
+
+static const int BUTTON_PADDLE_LOCAL = 5;
+static const int BUTTON_PADDLE_REMOTE = 2;
 
 CRGB leds[NUM_LEDS];
 CRGB ledStrip[NUM_STRIP_LEDS];
@@ -30,8 +33,8 @@ ConfigWebServer *webServer = nullptr;
 // Interrupt handler for button press
 void IRAM_ATTR onButtonFallingEdge()
 {
-    pongEngine.setPaddleHit(PongEngine::Paddles::A);
-    pongEngine.setPaddleHit(PongEngine::Paddles::B);
+    pongEngine.setPaddleHit(PongEngine::Paddle::A);
+    pongEngine.setPaddleHit(PongEngine::Paddle::B);
 }
 
 // Callback for when configuration is saved
@@ -53,8 +56,8 @@ static bool buttonFell = false;
 void onButtonPressed()
 {
     // Serial.println("Button pressed!");
-    // pongEngine.setPaddleHit(PongEngine::Paddles::A);
-    // pongEngine.setPaddleHit(PongEngine::Paddles::B);
+    // pongEngine.setPaddleHit(PongEngine::Paddle::A);
+    // pongEngine.setPaddleHit(PongEngine::Paddle::B);
     buttonFell = true;
     // Add your button press logic here
 }
@@ -90,12 +93,12 @@ void testLEDStrip()
 void setup()
 {
     Serial.begin(115200);
-    while (!Serial)
-    {
-    };
+    // while (!Serial) {};
+    delay(250);
+    Logger::setEnabled(Serial);
 
     // Attach interrupt to button pin (falling edge, active-low)
-    attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), onButtonFallingEdge, FALLING);
+    // attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), onButtonFallingEdge, FALLING);
 
     // Initialize button
     // button.attachPress(onButtonPressed);
@@ -105,6 +108,9 @@ void setup()
     FastLED.addLeds<WS2812, LED_PIN, RGB>(leds, NUM_LEDS);
     FastLED.addLeds<WS2812, LED_STRIP_PIN, GRB>(ledStrip, NUM_STRIP_LEDS);
     FastLED.setBrightness(100);
+
+    pinMode(BUTTON_PADDLE_LOCAL, INPUT_PULLUP);
+    pinMode(BUTTON_PADDLE_REMOTE, INPUT);
 
     pongEngine.init();
 
@@ -118,18 +124,32 @@ void setup()
     // webServer->begin();
 }
 
+static bool localPaddleActive = false;
+static bool remotePaddleActive = false;
+
 void loop()
 {
-    static unsigned long lastBlink = 0;
-    static bool ledState = false;
-
     // Handle button input with debouncing
     // button.tick();
 
-    if(buttonFell && !fastDigitalRead(BUTTON_PIN)) {
-        buttonFell = false;
-        pongEngine.setPaddleHit(PongEngine::Paddles::A);
-        pongEngine.setPaddleHit(PongEngine::Paddles::B);
+    bool localPaddlePressed = !fastDigitalRead(BUTTON_PADDLE_LOCAL);
+    bool remotePaddlePressed = !fastDigitalRead(BUTTON_PADDLE_REMOTE);
+
+    // if(localPaddlePressed)
+    //     Serial.println("LOCAL PADDLE!");
+
+    if(!localPaddleActive && localPaddlePressed) {
+        localPaddleActive = true;
+        pongEngine.setPaddleHit(PongEngine::Paddle::A);
+    } else if(localPaddleActive && !localPaddlePressed) {
+        localPaddleActive = false;
+    }
+
+    if(!remotePaddleActive && remotePaddlePressed) {
+        remotePaddleActive = true;
+        pongEngine.setPaddleHit(PongEngine::Paddle::B);
+    } else if(remotePaddleActive && !remotePaddlePressed) {
+        remotePaddleActive = false;
     }
 
     pongEngine.update();

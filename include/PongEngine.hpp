@@ -30,6 +30,7 @@ struct GameParameters
     } paddle;
 
     struct {
+        float speedMinIncreasePerHit = 0.075f;
         uint32_t scoreAnimationDurationUs = 1000*1000;
     } gameplay;
 };
@@ -37,7 +38,7 @@ struct GameParameters
 class PongEngine
 {   
 public:
-    enum Paddles
+    enum Paddle
     {
         A = 0,
         B = 1
@@ -49,7 +50,7 @@ public:
     void debug(int intervalUs);
 
     void update();
-    void setPaddleHit(Paddles paddle);
+    void setPaddleHit(Paddle paddle);
 
     GameParameters gameParameters() const;
     void setGameParameters(const GameParameters& params);
@@ -65,17 +66,17 @@ private:
         PointScoredByB
     };
 
-    void updateWaitingForStart(Paddles at);
-    void drawWaitingForStart(std::optional<Paddles> at = std::nullopt);
+    void updateWaitingForStart(Paddle at);
+    void drawWaitingForStart(std::optional<Paddle> at = std::nullopt);
 
     void updateBallPositionAndSpeed();
     void drawPlaying();
 
-    void updatePointScoredBy(Paddles at);
-    void drawPointScoredBy(Paddles at);
+    void updatePointScoredBy(Paddle at);
+    void drawPointScoredBy(Paddle at);
 
     CRGB sampleBallAt(float x) const;
-    CRGB samplePaddleAt(Paddles paddle, float x) const;
+    CRGB samplePaddleAt(Paddle paddle, float x) const;
 
     void transitionIntoState(GameState state);
 
@@ -97,10 +98,12 @@ private:
     uint32_t mCurrentUpdateTimeUs = 0;
     uint32_t mLastUpdateTimeUs = 0;
 
+
     struct {
         float position = 0.0f; // Ball position (0.0 to 1.0)
         float velocity = 0.0f; // Ball velocity (units per update)
 
+        uint32_t hitCounter = 0;
     } mBallState;
 
     CRGB* mLeds = nullptr;

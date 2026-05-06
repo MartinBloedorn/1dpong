@@ -7,6 +7,8 @@
 - [ ] Animations:
     - Point
     - Waiting to start
+- [ ] Go to "starting state" after idle for too long
+- Motion blur seems longer when going B->A...
 
 ## Ideas
 

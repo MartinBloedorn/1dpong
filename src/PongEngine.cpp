@@ -29,7 +29,7 @@ void PongEngine::debug(int intervalUs)
     }
 }
 
-void PongEngine::setPaddleHit(Paddles paddle)
+void PongEngine::setPaddleHit(Paddle paddle)
 {
     uint32_t t = micros();
 
@@ -57,29 +57,29 @@ void PongEngine::update()
     switch(mGameState.state) 
     {
         case WaitingForStartAtAny:
-            updateWaitingForStart(Paddles::A);
-            updateWaitingForStart(Paddles::B);
+            updateWaitingForStart(Paddle::A);
+            updateWaitingForStart(Paddle::B);
             drawWaitingForStart(std::nullopt);
             break;
         case WaitingForStartAtA:
-            updateWaitingForStart(Paddles::A);
-            drawWaitingForStart(Paddles::A);
+            updateWaitingForStart(Paddle::A);
+            drawWaitingForStart(Paddle::A);
             break;
         case WaitingForStartAtB:
-            updateWaitingForStart(Paddles::B);
-            drawWaitingForStart(Paddles::B);
+            updateWaitingForStart(Paddle::B);
+            drawWaitingForStart(Paddle::B);
             break;
         case Playing:
             updateBallPositionAndSpeed();
             drawPlaying();
             break;
         case PointScoredByA:
-            updatePointScoredBy(Paddles::A);
-            drawPointScoredBy(Paddles::A);
+            updatePointScoredBy(Paddle::A);
+            drawPointScoredBy(Paddle::A);
             break;
         case PointScoredByB:
-            updatePointScoredBy(Paddles::B);
-            drawPointScoredBy(Paddles::B);
+            updatePointScoredBy(Paddle::B);
+            drawPointScoredBy(Paddle::B);
             break;
         default:
             break;
@@ -88,18 +88,18 @@ void PongEngine::update()
     mLastUpdateTimeUs = mCurrentUpdateTimeUs;
 }
 
-void PongEngine::updateWaitingForStart(Paddles at)
+void PongEngine::updateWaitingForStart(Paddle at)
 {
     if(mPaddleHit[at].isActive) {
-        mBallState.position = (at == Paddles::A ? 0.0f : 1.0f);
-        mBallState.velocity = (at == Paddles::A ? 1.0f :-1.0f) * mGameParameters.ball.speedInit;
+        mBallState.position = (at == Paddle::A ? 0.0f : 1.0f);
+        mBallState.velocity = (at == Paddle::A ? 1.0f :-1.0f) * mGameParameters.ball.speedInit;
         mPaddleHit[at].isActive = false;
         Logger::debug(Serial, "Started: ", at, ", ", mBallState.position, ", ", mBallState.velocity);
         transitionIntoState(GameState::Playing);
     }
 }
 
-void PongEngine::drawWaitingForStart(std::optional<Paddles> at)
+void PongEngine::drawWaitingForStart(std::optional<Paddle> at)
 {
     draw([](int i, float x) {
         return CRGB{};
@@ -115,7 +115,15 @@ void PongEngine::updateBallPositionAndSpeed()
     float dt = (t - mLastUpdateTimeUs) / 1000000.0f;
     bs.position += bs.velocity*dt;
 
-    auto paddleToCheck = bs.velocity > 0.0f ? Paddles::B : Paddles::A;
+    if(bs.position > 1.0f) {
+        transitionIntoState(PointScoredByA);
+        return;
+    } else if(bs.position < 0.0f) {
+        transitionIntoState(PointScoredByB);
+        return;
+    }
+
+    auto paddleToCheck = bs.velocity > 0.0f ? Paddle::B : Paddle::A;
     auto& paddle = mPaddleHit[paddleToCheck];
 
     if(paddle.isActive) {
@@ -123,45 +131,46 @@ void PongEngine::updateBallPositionAndSpeed()
         float q = normalizeToLength(gp.paddle.range);
 
         float x = bs.position;
-        float d = paddleToCheck == Paddles::A ? x : (1.0f - x);
+        float d = paddleToCheck == Paddle::A ? x : (1.0f - x);
         float e = k * fl::clamp(1.0f - d / q, 0.0f, 1.0f);
         
         paddle.isActive = false;
 
         if(e > 0.01f) {
+            bs.hitCounter++;
+
             float dir = bs.velocity > 0.0f ? -1.0f : 1.0f;
-            float vel = fl::clamp(fabs(e * bs.velocity), gp.ball.speedMin, gp.ball.speedMax);
+            float vel = fabs(e * bs.velocity);
+            float min = gp.ball.speedMin + ((float)bs.hitCounter * gp.gameplay.speedMinIncreasePerHit);
+
+            min = fl::clamp(min, gp.ball.speedMin, 0.9f * gp.ball.speedMax);
+            vel = fl::clamp(vel, min, gp.ball.speedMax);
             bs.velocity = dir * vel;
 
             Logger::debug(Serial, "Hit! ", paddleToCheck, ": ", x, ", ", d, ", ", e, " -> ", bs.velocity);
         }
     }
-
-    if(bs.position > 1.01f)
-        transitionIntoState(PointScoredByA);
-    else if(bs.position <-0.01f)
-        transitionIntoState(PointScoredByB);
 }
 
 void PongEngine::drawPlaying()
 {
     draw([this](int, float x) {
         auto ballp = sampleBallAt(x);
-        auto paddlep = samplePaddleAt(Paddles::A, x) + samplePaddleAt(Paddles::B, x);
+        auto paddlep = samplePaddleAt(Paddle::A, x) + samplePaddleAt(Paddle::B, x);
         return CRGB::blend(ballp, paddlep, 128); // Blend ball and paddle colors
     });
 }
 
-void PongEngine::updatePointScoredBy(Paddles at)
+void PongEngine::updatePointScoredBy(Paddle at)
 {
     if(mCurrentUpdateTimeUs - mGameState.transitionUs > mGameParameters.gameplay.scoreAnimationDurationUs)
-        transitionIntoState(at == Paddles::A ? WaitingForStartAtA : WaitingForStartAtB);
+        transitionIntoState(at == Paddle::A ? WaitingForStartAtA : WaitingForStartAtB);
 }
 
-void PongEngine::drawPointScoredBy(Paddles at)
+void PongEngine::drawPointScoredBy(Paddle at)
 {
     draw([this, at](int, float x) {
-        float d = at == Paddles::A ? x : (1.0f - x); 
+        float d = at == Paddle::A ? x : (1.0f - x); 
 
         if(d < 0.25f)
             return CRGB::Green;
@@ -180,7 +189,7 @@ CRGB PongEngine::sampleBallAt(float x) const
     // Normalize coordinates so that x>0 -> in front of ball, x<0 -> behind ball:
     x = (bs.velocity < 0.0f) ? bs.position - x : x - bs.position;
 
-    float relv = fabs((bs.velocity - gp.ball.speedMin) / (gp.ball.speedMax - gp.ball.speedMin));
+    float relv = (fabs(bs.velocity) - gp.ball.speedMin) / (gp.ball.speedMax - gp.ball.speedMin);
 
     // float v = fl::clamp(1.0f - fabs(x) / (normalizeToLength(gp.ball.width) / 2.0f), 0.0f, 1.0f);
     float w = normalizeToLength(gp.ball.width) / 2.0f;
@@ -188,7 +197,7 @@ CRGB PongEngine::sampleBallAt(float x) const
 
     // "Motion blur":
     float b = x < 0.0f 
-            ? gp.ball.motionBlurStrength * (1.0f - fabs(x) / (w * relv * gp.ball.motionBlurWidth))
+            ? gp.ball.motionBlurStrength * (1.0f - fabs(x) / (w * (relv + 1.0f) * gp.ball.motionBlurWidth))
             : 0.0f;
     b = fl::clamp(b, 0.0f, 1.0f);
 
@@ -202,7 +211,7 @@ CRGB PongEngine::sampleBallAt(float x) const
     return CRGB::blend(ballp, blurp, 128);
 }
 
-CRGB PongEngine::samplePaddleAt(Paddles paddle, float x) const
+CRGB PongEngine::samplePaddleAt(Paddle paddle, float x) const
 {
     const auto& hitTimeUs = mPaddleHit[paddle].timeUs;
     const auto& gp        = mGameParameters;
@@ -212,7 +221,7 @@ CRGB PongEngine::samplePaddleAt(Paddles paddle, float x) const
         return CRGB::Black;
 
     float paddleSize = normalizeToLength(gp.paddle.range);
-    float d = paddle == Paddles::A ? x : (1.0f - x);
+    float d = paddle == Paddle::A ? x : (1.0f - x);
     
     if(d > paddleSize) 
         return CRGB::Black;
@@ -238,12 +247,15 @@ void PongEngine::transitionIntoState(GameState state)
         case PointScoredByB:
             Logger::info(Serial, "Point scored by B!");
             break;
+        case Playing:
+            mBallState.hitCounter = 0;
+            break;
         default:
             break;
     }
 
-    mPaddleHit[Paddles::A].isActive = false;
-    mPaddleHit[Paddles::B].isActive = false;
+    mPaddleHit[Paddle::A].isActive = false;
+    mPaddleHit[Paddle::B].isActive = false;
 
     mGameState.state = state;
     mGameState.transitionUs = mCurrentUpdateTimeUs;

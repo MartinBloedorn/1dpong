@@ -8,6 +8,8 @@ namespace Logger
 namespace details 
 {
 
+static inline bool sEnabled{true};
+
 template<typename Stream, typename Arg>
 void print_recursive(Stream& stream, Arg&& arg) {
     stream.println(std::move(arg));
@@ -27,10 +29,15 @@ inline const char* fmt_timestamp(long int t) {
 
 template<typename Stream, typename... Args>
 void log(Stream& stream, const char* label, Args&&... args) {
-    print_recursive(stream, details::fmt_timestamp(millis()), " [", label, "] ", std::forward<Args>(args)...);
+    if(sEnabled)
+        print_recursive(stream, details::fmt_timestamp(millis()), " [", label, "] ", std::forward<Args>(args)...);
 }
 
 } // details
+
+inline void setEnabled(bool enabled) {
+    details::sEnabled = enabled;
+}
 
 template<typename Stream, typename... Args>
 void print(Stream& stream, Args&&... args) {
