@@ -10,6 +10,8 @@ namespace details
 
 static inline bool sEnabled{true};
 
+static inline auto& sDefaultStream = Serial;
+
 template<typename Stream, typename Arg>
 void print_recursive(Stream& stream, Arg&& arg) {
     stream.println(std::move(arg));
@@ -39,23 +41,42 @@ inline void setEnabled(bool enabled) {
     details::sEnabled = enabled;
 }
 
-template<typename Stream, typename... Args>
-void print(Stream& stream, Args&&... args) {
-    details::print_recursive(stream, std::forward<Args>(args)...);
+// template<typename Stream, typename... Args>
+// void print(Stream& stream, Args&&... args) {
+//     details::print_recursive(stream, std::forward<Args>(args)...);
+// }
+
+// template<typename Stream, typename... Args>
+// void info(Stream& stream, Args&&... args) {
+//     details::log(stream, " INFO", std::forward<Args>(args)...);
+// }
+
+// template<typename Stream, typename... Args>
+// void debug(Stream& stream, Args&&... args) {
+//     details::log(stream, "DEBUG", std::forward<Args>(args)...);
+// }
+// template<typename Stream, typename... Args>
+// void warn(Stream& stream, Args&&... args) {
+//     details::log(stream, " WARN", std::forward<Args>(args)...);
+// }
+
+template<typename... Args>
+void print(Args&&... args) {
+    details::print_recursive(details::sDefaultStream, std::forward<Args>(args)...);
 }
 
-template<typename Stream, typename... Args>
-void info(Stream& stream, Args&&... args) {
-    details::log(stream, " INFO", std::forward<Args>(args)...);
+template<typename... Args>
+void info(Args&&... args) {
+    details::log(details::sDefaultStream, " INFO", std::forward<Args>(args)...);
 }
 
-template<typename Stream, typename... Args>
-void debug(Stream& stream, Args&&... args) {
-    details::log(stream, "DEBUG", std::forward<Args>(args)...);
+template<typename... Args>
+void debug(Args&&... args) {
+    details::log(details::sDefaultStream, "DEBUG", std::forward<Args>(args)...);
 }
-template<typename Stream, typename... Args>
-void warn(Stream& stream, Args&&... args) {
-    details::log(stream, " WARN", std::forward<Args>(args)...);
+template<typename... Args>
+void warn(Args&&... args) {
+    details::log(details::sDefaultStream, " WARN", std::forward<Args>(args)...);
 }
 
 }

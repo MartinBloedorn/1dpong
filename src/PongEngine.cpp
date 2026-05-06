@@ -2,6 +2,7 @@
 
 #include "Logger.h"
 
+#include <cmath>
 #include <Arduino.h>
 
 PongEngine::PongEngine(CRGB* leds, int numLeds)
@@ -12,7 +13,7 @@ PongEngine::PongEngine(CRGB* leds, int numLeds)
 
 void PongEngine::init()
 {
-    transitionIntoState(WaitingForStartAtAny);
+    transitionIntoState(IdleAnimation);
 }
 
 void PongEngine::debug(int intervalUs)
@@ -21,9 +22,9 @@ void PongEngine::debug(int intervalUs)
 
     if(micros() - lasttd > intervalUs) 
     {
-        Logger::debug(Serial, "* mGameState.state     = ", mGameState.state);
-        Logger::debug(Serial, "* mBallState.position  = ", mBallState.position);
-        Logger::debug(Serial, "* mBallState.velocity  = ", mBallState.velocity);
+        Logger::debug("* mGameState.state     = ", mGameState.state);
+        Logger::debug("* mBallState.position  = ", mBallState.position);
+        Logger::debug("* mBallState.velocity  = ", mBallState.velocity);
 
         lasttd = micros();
     }
@@ -34,7 +35,7 @@ void PongEngine::setPaddleHit(Paddle paddle)
     uint32_t t = micros();
 
     if(t - mPaddleHit[paddle].timeUs > mGameParameters.paddle.deadtimeUs) {
-        Logger::debug(Serial, "setPaddleHit(", paddle, ")");
+        Logger::debug("setPaddleHit(", paddle, ")");
         mPaddleHit[paddle].timeUs   = t;
         mPaddleHit[paddle].isActive = true;
     }
@@ -56,6 +57,11 @@ void PongEngine::update()
 
     switch(mGameState.state) 
     {
+        case IdleAnimation:
+            updateWaitingForStart(Paddle::A);
+            updateWaitingForStart(Paddle::B);
+            drawIdleAnimation();
+            break;
         case WaitingForStartAtAny:
             updateWaitingForStart(Paddle::A);
             updateWaitingForStart(Paddle::B);
@@ -90,20 +96,135 @@ void PongEngine::update()
 
 void PongEngine::updateWaitingForStart(Paddle at)
 {
+    const auto& gp = mGameParameters;
+
     if(mPaddleHit[at].isActive) {
         mBallState.position = (at == Paddle::A ? 0.0f : 1.0f);
-        mBallState.velocity = (at == Paddle::A ? 1.0f :-1.0f) * mGameParameters.ball.speedInit;
+        mBallState.velocity = (at == Paddle::A ? 1.0f :-1.0f) * gp.ball.speedInit;
         mPaddleHit[at].isActive = false;
-        Logger::debug(Serial, "Started: ", at, ", ", mBallState.position, ", ", mBallState.velocity);
-        transitionIntoState(GameState::Playing);
+        Logger::debug("Started: ", at, ", ", mBallState.position, ", ", mBallState.velocity);
+        transitionIntoState(Playing);
+    } 
+    else if(
+        (at == Paddle::A 
+            && mGameState.state == WaitingForStartAtA 
+            && mCurrentUpdateTimeUs - mGameState.transitionUs > gp.gameplay.maxWaitForPlayerTimeUs) ||
+        (at == Paddle::B
+            && mGameState.state == WaitingForStartAtB
+            && mCurrentUpdateTimeUs - mGameState.transitionUs > gp.gameplay.maxWaitForPlayerTimeUs)) 
+    {
+        transitionIntoState(WaitingForStartAtAny);
+    }
+    else if(
+        mGameState.state == WaitingForStartAtAny 
+        && mCurrentUpdateTimeUs - mGameState.transitionUs > gp.gameplay.maxWaitUntilIdleAnimation)
+    {
+        transitionIntoState(IdleAnimation);
     }
 }
 
 void PongEngine::drawWaitingForStart(std::optional<Paddle> at)
 {
-    draw([](int i, float x) {
-        return CRGB{};
+    bool animateBoth = !at.has_value();
+    auto other = (at && *at == Paddle::A) ? Paddle::B : Paddle::A;
+
+    draw([this, animateBoth, at, other](int i, float x) 
+    {
+        if(animateBoth) {
+            return samplePaddleWaitAnimationAt(Paddle::A, x) 
+                 + samplePaddleWaitAnimationAt(Paddle::B, x);
+        } 
+        return samplePaddleWaitAnimationAt(*at, x) 
+             + samplePaddleAt(other, x);
     });
+}
+
+void PongEngine:: drawIdleAnimation()
+{
+    float t = mCurrentUpdateTimeUs * 0.000001f;
+
+    const auto falloff = [](float d, float radius) -> float {
+        float v = 1.0f - (d / radius);
+        if (v <= 0) return 0;
+        return v * v * (3 - 2 * v); // smoothstep
+    };
+
+    draw([this, t, falloff](int, float x) {
+        // float time = t * 0.000001f;
+
+        struct Bubble {
+            float speed;
+            float offset;
+            float size;
+            float hueOffset;
+        };
+
+        Bubble bubbles[3] = {
+            { 0.07f, 0.1f, 0.18f, 0.0f },
+            { -0.05f, 0.5f, 0.22f, 0.3f },
+            { 0.03f, 0.8f, 0.15f, 0.6f }
+        };
+
+        float r = 0, g = 0, b = 0;
+
+        for (int i = 0; i < 3; i++) {
+            // Position wraps around [0,1]
+            float pos = fmodf(bubbles[i].offset + t * bubbles[i].speed, 1.0f);
+            if (pos < 0) pos += 1.0f;
+
+            // Distance on a loop (important!)
+            float d = fabsf(x - pos);
+            d = fminf(d, 1.0f - d);
+
+            // Smooth falloff
+            float influence = 1.0f - (d / bubbles[i].size);
+            if (influence <= 0) continue;
+
+            influence = influence * influence * (3 - 2 * influence);
+
+            // Color per bubble
+            float hue = fmodf(bubbles[i].hueOffset + t * 0.02f, 1.0f);
+
+            CRGB c;
+            return c.setHSV(hue * 255.f, 0.8f * 255.f, influence * 255.f);
+
+            r += c.r;
+            g += c.g;
+            b += c.b;
+        }
+
+        // Clamp BEFORE conversion
+        r = fminf(r, 1.0f);
+        g = fminf(g, 1.0f);
+        b = fminf(b, 1.0f);
+
+        // Convert to 0–255 with proper rounding
+        uint8_t R = (uint8_t)(r * 255.0f + 0.5f);
+        uint8_t G = (uint8_t)(g * 255.0f + 0.5f);
+        uint8_t B = (uint8_t)(b * 255.0f + 0.5f);
+
+        return CRGB{R, G, B};
+    });
+
+    // draw([this, t](int, float x) 
+    // {
+    //     // Layered waves
+    //     float wave1 = sinf(2.0f * PI * (x * 1.0f + t * 0.05f));
+    //     float wave2 = sinf(2.0f * PI * (x * 2.3f - t * 0.08f));
+    //     float wave3 = sinf(2.0f * PI * (x * 0.7f + t * 0.02f));
+    //     // Combine waves
+    //     float combined = (wave1 + wave2 * 0.5f + wave3 * 0.8f);
+    //     // Normalize to 0–1
+    //     float hue = (combined * 0.5f + 0.5f);
+    //     // Optional: slow global hue drift
+    //     hue += t * 0.075f;
+    //     // Wrap hue
+    //     hue = fmodf(hue, 1.0f);
+    //     if (hue < 0) hue += 1.0f;
+    //     // Convert HSV → RGB
+    //     CRGB c;
+    //     return c.setHSV(hue * 255.f, 0.6f * 255.f, 0.4f * 255.f);
+    // });
 }
 
 void PongEngine::updateBallPositionAndSpeed()
@@ -147,7 +268,7 @@ void PongEngine::updateBallPositionAndSpeed()
             vel = fl::clamp(vel, min, gp.ball.speedMax);
             bs.velocity = dir * vel;
 
-            Logger::debug(Serial, "Hit! ", paddleToCheck, ": ", x, ", ", d, ", ", e, " -> ", bs.velocity);
+            Logger::debug("Hit! ", paddleToCheck, ": ", x, ", ", d, ", ", e, " -> ", bs.velocity);
         }
     }
 }
@@ -169,15 +290,69 @@ void PongEngine::updatePointScoredBy(Paddle at)
 
 void PongEngine::drawPointScoredBy(Paddle at)
 {
-    draw([this, at](int, float x) {
-        float d = at == Paddle::A ? x : (1.0f - x); 
+    // draw([this, at](int, float x) {
+    //     float d = at == Paddle::A ? x : (1.0f - x); 
+    //     if(d < 0.25f)
+    //         return CRGB::Green;
+    //     if(d > 0.75f)
+    //         return CRGB::Red;  
+    //     return CRGB::Black;
+    // });
 
-        if(d < 0.25f)
-            return CRGB::Green;
-        if(d > 0.75f)
-            return CRGB::Red;
-            
-        return CRGB::Black;
+    draw([this, at](int, float x) -> CRGB {
+        const uint32_t durationOfExplosionInUs = 1000000;
+
+        float progress = (float)(mCurrentUpdateTimeUs - mGameState.transitionUs) / (float)durationOfExplosionInUs;
+        if (progress >= 1.0f) 
+            return CRGB{0,0,0};
+
+        // --- Core parameters ---
+        float shockPos = progress;                 // wave moves from 0 → 1
+        float shockWidth = 0.08f + 0.12f * progress; // widens slightly
+        float coreSize = 0.25f * (1.0f - progress);  // shrinking bright core
+
+        // Distance from explosion origin (Player A at x=0)
+        float d = at == Paddle::A ? x : (1.0f - x);
+
+        // --- Shockwave ring ---
+        float ringDist = fabsf(d - shockPos);
+        float ring = 1.0f - (ringDist / shockWidth);
+        if (ring > 0) {
+            ring = ring * ring * (3 - 2 * ring); // smoothstep
+        } else {
+            ring = 0;
+        }
+
+        // --- Core flash ---
+        float core = 1.0f - (d / coreSize);
+        if (core > 0) {
+            core = core * core;
+        } else {
+            core = 0;
+        }
+
+        // --- Flicker / sparks (cheap noise) ---
+        float time = mCurrentUpdateTimeUs * 0.000001f;
+        float flicker = 0.5f + 0.5f * sinf(40.0f * d - time * 30.0f);
+
+        // --- Combine ---
+        float brightness = core * 1.2f + ring * 0.8f * flicker;
+
+        // Fade out over time
+        brightness *= (1.0f - progress);
+
+        // Clamp
+        brightness = fminf(brightness, 1.0f);
+
+        // --- Color: hot → cool over time ---
+        float hue = 0.05f + 0.1f * progress; // red/orange → yellow/greenish
+        float saturation = 1.0f - 0.3f * progress;
+
+        // Convert (assuming float HSV helper)
+        CRGB c;
+        c.setHSV(hue * 255.f, saturation * 255.f, brightness * 255.f);
+
+        return c;
     });
 }
 
@@ -217,8 +392,8 @@ CRGB PongEngine::samplePaddleAt(Paddle paddle, float x) const
     const auto& gp        = mGameParameters;
     const uint32_t t      = mCurrentUpdateTimeUs;
 
-    if(!hitTimeUs || t - hitTimeUs > gp.paddle.animationDecayUs)
-        return CRGB::Black;
+    // if(!hitTimeUs || t - hitTimeUs > gp.paddle.animationDecayUs)
+    //     return CRGB::Black;
 
     float paddleSize = normalizeToLength(gp.paddle.range);
     float d = paddle == Paddle::A ? x : (1.0f - x);
@@ -230,22 +405,47 @@ CRGB PongEngine::samplePaddleAt(Paddle paddle, float x) const
     float v = fl::clamp(1.1f - (d / paddleSize), 0.0f, 1.0f);
     // Decay over time:
     float k = 1.0f - ((float)(t - hitTimeUs))/((float)gp.paddle.animationDecayUs);
+    k = fl::clamp(k, 0.0f, 1.0f);
 
+    // Indicators for the paddles: red-ish for non-hit, white for hit:
+    float r =  64.f * v; 
     float c = 255.f * v * k;
-    return CRGB(c, c, c);
+
+    return CRGB::blend(CRGB(r, r/2, 0), CRGB(c, c, c), 255.f * k);
+}
+
+CRGB PongEngine::samplePaddleWaitAnimationAt(Paddle paddle, float x) const
+{
+    const auto& gp = mGameParameters;
+    const float t  = mCurrentUpdateTimeUs;
+
+    float paddleSize = 2.f * normalizeToLength(gp.paddle.range);
+    float d = paddle == Paddle::A ? x : (1.0f - x);
+
+    if(d > paddleSize) 
+        return CRGB::Black;
+
+    // Add oscillation over time
+    float w = 6.f * t / 1000000.f;
+    float s = paddle == Paddle::A ? std::sin(w) : std::sin(w + M_PI);
+    // Intensity ramp + oscillation:
+    float k = 1.f - d / paddleSize;
+    float c = 255.f * k * ((0.4f * s) + 0.5f);
+
+    return CRGB(c/2, c, 0);
 }
 
 void PongEngine::transitionIntoState(GameState state)
 {
-    Logger::debug(Serial, "transitionIntoState(", state, ")");
+    Logger::debug("transitionIntoState(", state, ")");
 
     switch(state) 
     {
         case PointScoredByA:
-            Logger::info(Serial, "Point scored by A!");
+            Logger::info("Point scored by A!");
             break;
         case PointScoredByB:
-            Logger::info(Serial, "Point scored by B!");
+            Logger::info("Point scored by B!");
             break;
         case Playing:
             mBallState.hitCounter = 0;

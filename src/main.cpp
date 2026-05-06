@@ -15,7 +15,7 @@ const char *WIFI_PASSWORD = "25183127771347211799";
 #define NUM_LEDS 1
 
 #define LED_STRIP_PIN 6
-#define NUM_STRIP_LEDS 190
+#define NUM_STRIP_LEDS 170//190
 
 // Button configuration
 #define BUTTON_PIN 6

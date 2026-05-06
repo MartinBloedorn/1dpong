@@ -31,7 +31,9 @@ struct GameParameters
 
     struct {
         float speedMinIncreasePerHit = 0.075f;
-        uint32_t scoreAnimationDurationUs = 1000*1000;
+        uint32_t scoreAnimationDurationUs = 1*1000*1000;
+        uint32_t maxWaitForPlayerTimeUs = 15*1000*1000;
+        uint32_t maxWaitUntilIdleAnimation = 30*1000*1000;
     } gameplay;
 };
 
@@ -58,6 +60,7 @@ public:
 private:
     enum GameState
     {
+        IdleAnimation,
         WaitingForStartAtAny,
         WaitingForStartAtA,
         WaitingForStartAtB,
@@ -68,6 +71,7 @@ private:
 
     void updateWaitingForStart(Paddle at);
     void drawWaitingForStart(std::optional<Paddle> at = std::nullopt);
+    void drawIdleAnimation();
 
     void updateBallPositionAndSpeed();
     void drawPlaying();
@@ -77,6 +81,7 @@ private:
 
     CRGB sampleBallAt(float x) const;
     CRGB samplePaddleAt(Paddle paddle, float x) const;
+    CRGB samplePaddleWaitAnimationAt(Paddle paddle, float x) const;
 
     void transitionIntoState(GameState state);
 
@@ -91,7 +96,7 @@ private:
     }
 
     struct {
-        GameState state = WaitingForStartAtAny;
+        GameState state = IdleAnimation;
         uint32_t transitionUs = 0;
     } mGameState;
 
