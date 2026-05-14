@@ -299,60 +299,42 @@ void PongEngine::drawPointScoredBy(Paddle at)
     //     return CRGB::Black;
     // });
 
-    draw([this, at](int, float x) -> CRGB {
-        const uint32_t durationOfExplosionInUs = 1000000;
+    uint32_t dt = mCurrentUpdateTimeUs - mGameState.transitionUs;
+    float progress = ((float)dt) / ((float)mGameParameters.gameplay.scoreAnimationDurationUs);
 
-        float progress = (float)(mCurrentUpdateTimeUs - mGameState.transitionUs) / (float)durationOfExplosionInUs;
-        if (progress >= 1.0f) 
-            return CRGB{0,0,0};
+    float particles[6] = {0.05, 0.1, 0.15, 0.2, 0.25, 0.3};
 
-        // --- Core parameters ---
-        float shockPos = progress;                 // wave moves from 0 → 1
-        float shockWidth = 0.08f + 0.12f * progress; // widens slightly
-        float coreSize = 0.25f * (1.0f - progress);  // shrinking bright core
+    draw([this, at, dt, progress, particles](int, float x) -> CRGB {
+        float d = at == Paddle::B ? x : (1.0f - x); // Flip around
+        
+        if(d < 0.66f) {
+            // float k = 1.f - d / (0.25f * (.1f + pow(progress, 0.33f)));
+            // k = k * (1.f - progress) * fmaxf((1.f * std::sin(12.f * M_PI * progress)) + .5f, 0.f);
+            // k = fl::clamp(k, 0.f, 1.f);
+            // float c = 255.f * k;
+            // return CRGB(c, 0, 0);
 
-        // Distance from explosion origin (Player A at x=0)
-        float d = at == Paddle::A ? x : (1.0f - x);
+            const float w = 0.01;
+            float v = 0.f;
 
-        // --- Shockwave ring ---
-        float ringDist = fabsf(d - shockPos);
-        float ring = 1.0f - (ringDist / shockWidth);
-        if (ring > 0) {
-            ring = ring * ring * (3 - 2 * ring); // smoothstep
-        } else {
-            ring = 0;
+            for(int i = 0; i < 6; ++i) {
+                float distance = fabs(particles[i]*progress - d);
+                float k = 1.f - distance / w;
+                k = fl::clamp(k, 0.f, 1.f);
+                v += k;
+                // make particle's velocity affect decay/width
+            }
+            v *= (1.f - progress);
+            v = fl::clamp(v, 0.f, 1.f);
+            float c = 255.f * v;
+            return CRGB(c, 0, 0);
         }
 
-        // --- Core flash ---
-        float core = 1.0f - (d / coreSize);
-        if (core > 0) {
-            core = core * core;
-        } else {
-            core = 0;
+        if(d > 0.66f) {
+            return dt & (1 << 17) ? CRGB::Green : CRGB::Black;
         }
 
-        // --- Flicker / sparks (cheap noise) ---
-        float time = mCurrentUpdateTimeUs * 0.000001f;
-        float flicker = 0.5f + 0.5f * sinf(40.0f * d - time * 30.0f);
-
-        // --- Combine ---
-        float brightness = core * 1.2f + ring * 0.8f * flicker;
-
-        // Fade out over time
-        brightness *= (1.0f - progress);
-
-        // Clamp
-        brightness = fminf(brightness, 1.0f);
-
-        // --- Color: hot → cool over time ---
-        float hue = 0.05f + 0.1f * progress; // red/orange → yellow/greenish
-        float saturation = 1.0f - 0.3f * progress;
-
-        // Convert (assuming float HSV helper)
-        CRGB c;
-        c.setHSV(hue * 255.f, saturation * 255.f, brightness * 255.f);
-
-        return c;
+        return CRGB::Black;
     });
 }
 

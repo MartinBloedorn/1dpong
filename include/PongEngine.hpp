@@ -14,14 +14,14 @@ struct GameParameters
         float motionBlurWidth = 5.0f;       // As a multiplier of width
         float motionBlurStrength = 0.33f;
 
-        float speedInit = 0.75f;
+        float speedInit = 0.55f;
         float speedMin  = 0.5f;
-        float speedMax  = 2.25f;
+        float speedMax  = 2.20f;
     } ball;
 
     struct {
-        float power = 2.75f;
-        int range   = 10;
+        float power = 1.5f;
+        int range   = 20;
 
         CRGB color[2]  = {CRGB::Red, CRGB::Yellow};
 
@@ -31,9 +31,9 @@ struct GameParameters
 
     struct {
         float speedMinIncreasePerHit = 0.075f;
-        uint32_t scoreAnimationDurationUs = 1*1000*1000;
-        uint32_t maxWaitForPlayerTimeUs = 15*1000*1000;
-        uint32_t maxWaitUntilIdleAnimation = 30*1000*1000;
+        uint32_t scoreAnimationDurationUs   =  1*1500*1000;
+        uint32_t maxWaitForPlayerTimeUs     = 15*1000*1000;
+        uint32_t maxWaitUntilIdleAnimation  = 30*1000*1000; 
     } gameplay;
 };
 
